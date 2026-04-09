@@ -1,194 +1,258 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { MapPin, Calendar, Users, Star, ArrowLeft, Clock } from "lucide-react";
-import { Button } from "../components/ui/button";
+import { MapPin, Calendar, Users, Star, ArrowLeft, Clock, Check } from "lucide-react";
+import { Navbar } from "../components/navbar";
+import { Footer } from "../components/footer";
 import { useAuth } from "../hooks/useAuth";
-import { useDarkMode } from "../context/DarkModeContext";
+
+const GOLD   = "#C9A96E";
+const GOLD_D = "#8B6914";
+const NAVY   = "#1A1A2E";
 
 const guides = [
-    { id: "g1", name: "Yassine El Kbir", city: "Marrakech", language: "Français, Anglais", rate: 120, rating: 4.9, available: true },
-    { id: "g2", name: "Sara Ben", city: "Fès", language: "Français, Arabe", rate: 95, rating: 4.8, available: true },
-    { id: "g3", name: "Omar Azur", city: "Chefchaouen", language: "Anglais, Espagnol", rate: 110, rating: 4.7, available: false },
-    { id: "g4", name: "Nadia Laarbi", city: "Casablanca", language: "Français, Arabe", rate: 100, rating: 4.9, available: true },
+  { id: "g1", name: "Yassine El Kbir", city: "Marrakech", language: "French, English",   rate: 120, rating: 4.9, available: true  },
+  { id: "g2", name: "Sara Benali",      city: "Fès",       language: "French, Arabic",    rate: 95,  rating: 4.8, available: true  },
+  { id: "g3", name: "Omar Azur",        city: "Chefchaouen",language: "English, Spanish", rate: 110, rating: 4.7, available: false },
+  { id: "g4", name: "Nadia Laarbi",     city: "Casablanca", language: "French, Arabic",   rate: 100, rating: 4.9, available: true  },
 ];
-export function GuidePanel() {
-    const navigate = useNavigate();
-    const { role } = useAuth();
-    const { isDark } = useDarkMode();
-    const [selectedGuide, setSelectedGuide] = useState(null);
-    const [message, setMessage] = useState("");
-    const [booked, setBooked] = useState([]);
 
-    const upcomingAssignments = booked.map(() => ({ guests: 2 }));
-    const completedAssignments = [];
-
-    useEffect(() => {
-        if (role && role !== "customer") {
-            navigate("/select-role", { replace: true });
-        }
-    }, [role, navigate]);
-
-    const handleBook = (guide) => {
-        if (!guide.available) {
-            setMessage("This guide is not available right now.");
-            return;
-        }
-        setBooked((prev) => [...prev, guide.id]);
-        setSelectedGuide(guide.id);
-        setMessage(`Your request has been sent for ${guide.name}.`);
-    };
-
-    return (<div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" className="text-gray-600 dark:text-gray-300" asChild>
-                <Link to="/" viewTransition replace>
-                  <ArrowLeft className="w-5 h-5"/>
-                </Link>
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Tourist Guides</h1>
-                <p className="text-sm text-gray-600 dark:text-gray-300">Choose, contact and book your guide</p>
-              </div>
-            </div>
-            <div>
-              {message && <div className="text-sm px-4 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-xl">{message}</div>}
-            </div>
-          </div>
-        </div>
-      </header>
-
-      
-      <div className="max-w-7xl mx-auto px-8 py-10">
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
-            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-xl flex items-center justify-center mb-4">
-              <MapPin className="w-6 h-6 text-[#2563EB] dark:text-blue-400"/>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{guides.length}</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Available guides</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
-            <div className="w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-xl flex items-center justify-center mb-4">
-              <Users className="w-6 h-6 text-green-600 dark:text-green-400"/>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{guides.filter((g) => g.available).length}</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Currently ready guides</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
-            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/20 rounded-xl flex items-center justify-center mb-4">
-              <Star className="w-6 h-6 text-purple-600 dark:text-purple-400"/>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{(guides.reduce((sum, g) => sum + g.rating, 0) / guides.length).toFixed(1)}</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Note moyenne</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
-            <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/20 rounded-xl flex items-center justify-center mb-4">
-              <Calendar className="w-6 h-6 text-orange-600 dark:text-orange-400"/>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">{booked.length}</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Bookings made</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
-            <div className="w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-xl flex items-center justify-center mb-4">
-              <Users className="w-6 h-6 text-green-600 dark:text-green-400"/>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-              {upcomingAssignments.reduce((sum, a) => sum + a.guests, 0)}
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Voyageurs</p>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
-            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/20 rounded-xl flex items-center justify-center mb-4">
-              <MapPin className="w-6 h-6 text-purple-600 dark:text-purple-400"/>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">12</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Tournées ce mois-ci</p>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6">
-            <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/20 rounded-xl flex items-center justify-center mb-4">
-              <Clock className="w-6 h-6 text-orange-600 dark:text-orange-400"/>
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">4,9</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Note moyenne</p>
-          </div>
-        </div>
-
-        
-        <div className="mb-10">
-<h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-6">Available guides</h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {guides.map((guide) => (<div key={guide.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6 hover:shadow-lg transition-shadow">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{guide.name}</h3>
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${guide.available ? "bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"}`}>
-                        {guide.available ? "Available" : "Unavailable"}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-300 mb-2"><strong>City:</strong> {guide.city}</p>
-                    <p className="text-gray-600 dark:text-gray-300 mb-2"><strong>Languages:</strong> {guide.language}</p>
-                    <p className="text-gray-600 dark:text-gray-300 mb-3"><strong>Rate:</strong> {guide.rate} Dh / hour</p>
-                    <p className="text-gray-600 dark:text-gray-300">{Array.from({ length: 5 }).map((_, idx) => (<span key={idx} className={idx < guide.rating ? "text-yellow-400" : "text-gray-300 dark:text-gray-600"}>★</span>))} <span className="text-sm ml-1 text-gray-500 dark:text-gray-400">{guide.rating}</span></p>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Button disabled={!guide.available || booked.includes(guide.id)} onClick={() => handleBook(guide)} className="bg-[#2563EB] hover:bg-[#1d4ed8] text-white rounded-xl">
-                      {booked.includes(guide.id) ? "Booked" : "Book"}
-                    </Button>
-                  </div>
-                </div>
-              </div>))}
-          </div>
-        </div>
-
-        
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-6">Recently completed</h2>
-
-          <div className="space-y-4">
-            {completedAssignments.map((assignment) => (<div key={assignment.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-md p-6 opacity-75">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{assignment.title}</h3>
-                      <span className="text-xs font-medium bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 px-3 py-1 rounded-full">
-                        Completed
-                      </span>
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-300 mb-4">{assignment.hotel}</p>
-
-                    <div className="grid grid-cols-4 gap-6">
-                      <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                        <MapPin className="w-5 h-5 text-gray-400 dark:text-gray-500"/>
-                        <span className="text-sm">{assignment.location}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                        <Calendar className="w-5 h-5 text-gray-400 dark:text-gray-500"/>
-                        <span className="text-sm">{assignment.date}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                        <Clock className="w-5 h-5 text-gray-400 dark:text-gray-500"/>
-                        <span className="text-sm">{assignment.time}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                        <Users className="w-5 h-5 text-gray-400 dark:text-gray-500"/>
-                        <span className="text-sm">{assignment.guests} guests</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>))}
-          </div>
-        </div>
+function StatCard({ icon: Icon, iconColor, iconBg, value, label }) {
+  return (
+    <div
+      className="rounded-2xl p-5"
+      style={{ background: "#fff", border: "1px solid #EDE8DF", boxShadow: "0 2px 12px rgba(26,26,46,0.04)" }}
+    >
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+        style={{ background: iconBg }}
+      >
+        <Icon className="w-4.5 h-4.5" style={{ color: iconColor, width: 18, height: 18 }} />
       </div>
-    </div>);
+      <p className="text-2xl font-bold text-gray-900 mb-0.5">{value}</p>
+      <p className="text-xs text-gray-500">{label}</p>
+    </div>
+  );
 }
 
+export function GuidePanel() {
+  const { role } = useAuth();
+  const [booked, setBooked]   = useState([]);
+  const [flash, setFlash]     = useState("");
+
+  const handleBook = (guide) => {
+    if (!guide.available || booked.includes(guide.id)) return;
+    setBooked((p) => [...p, guide.id]);
+    setFlash(`Request sent for ${guide.name}!`);
+    setTimeout(() => setFlash(""), 3000);
+  };
+
+  const avgRating = (guides.reduce((s, g) => s + g.rating, 0) / guides.length).toFixed(1);
+
+  return (
+    <div className="min-h-screen" style={{ background: "#FAFAF8" }}>
+      <Navbar />
+
+      {/* ── Page header ── */}
+      <div style={{ background: NAVY, borderBottom: `1px solid rgba(201,169,110,0.15)` }}>
+        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Link to="/home" viewTransition>
+              <button
+                className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+              >
+                <ArrowLeft className="w-4 h-4 text-white" />
+              </button>
+            </Link>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest mb-0.5" style={{ color: GOLD, letterSpacing: "0.18em" }}>
+                MoroccanStay
+              </p>
+              <h1 className="text-xl font-bold text-white" style={{ letterSpacing: "-0.01em" }}>
+                Tourist Guides
+              </h1>
+            </div>
+          </div>
+
+          {/* Flash message */}
+          {flash && (
+            <div
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
+              style={{ background: "rgba(201,169,110,0.15)", border: `1px solid rgba(201,169,110,0.3)`, color: GOLD }}
+            >
+              <Check className="w-4 h-4" />
+              {flash}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-10">
+
+        {/* ── Stats ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+          <StatCard icon={MapPin}   iconColor={GOLD}        iconBg="rgba(201,169,110,0.1)"  value={guides.length}                      label="Total guides"  />
+          <StatCard icon={Users}    iconColor="#4A9B7F"      iconBg="rgba(74,155,127,0.1)"   value={guides.filter(g=>g.available).length} label="Available now" />
+          <StatCard icon={Star}     iconColor="#9B6B4A"      iconBg="rgba(155,107,74,0.1)"   value={avgRating}                          label="Avg rating"    />
+          <StatCard icon={Calendar} iconColor={GOLD_D}       iconBg="rgba(201,169,110,0.08)" value={booked.length}                      label="Your bookings" />
+        </div>
+
+        {/* ── Section title ── */}
+        <div className="mb-6">
+          <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: GOLD, letterSpacing: "0.18em" }}>
+            Browse
+          </p>
+          <h2 className="text-xl font-bold text-gray-900" style={{ letterSpacing: "-0.01em" }}>
+            Available guides
+          </h2>
+        </div>
+
+        {/* ── Guide cards ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {guides.map((guide) => {
+            const isBooked    = booked.includes(guide.id);
+            const canBook     = guide.available && !isBooked;
+
+            return (
+              <div
+                key={guide.id}
+                className="rounded-2xl p-6 flex gap-5"
+                style={{
+                  background: "#fff",
+                  border: isBooked ? `1px solid rgba(201,169,110,0.4)` : "1px solid #EDE8DF",
+                  boxShadow: "0 2px 16px rgba(26,26,46,0.05)",
+                }}
+              >
+                {/* Avatar */}
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 font-bold text-lg"
+                  style={{
+                    background: guide.available
+                      ? "rgba(201,169,110,0.12)"
+                      : "rgba(0,0,0,0.05)",
+                    color: guide.available ? GOLD_D : "#aaa",
+                  }}
+                >
+                  {guide.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <h3 className="font-bold text-gray-900" style={{ fontSize: "1rem" }}>
+                      {guide.name}
+                    </h3>
+                    <span
+                      className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0"
+                      style={
+                        guide.available
+                          ? { background: "#dcfce7", color: "#15803d" }
+                          : { background: "#f3f4f6", color: "#9ca3af" }
+                      }
+                    >
+                      {guide.available ? "Available" : "Unavailable"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 mb-3 text-sm" style={{ color: "#666" }}>
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5" style={{ color: GOLD }} />
+                      {guide.city}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" style={{ color: GOLD }} />
+                      {guide.language}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span style={{ color: GOLD_D, fontWeight: 600 }}>{guide.rate} Dh</span>
+                      <span style={{ color: "#aaa" }}>/ hour</span>
+                    </div>
+                  </div>
+
+                  {/* Rating stars */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex">
+                      {[1,2,3,4,5].map((i) => (
+                        <Star
+                          key={i}
+                          className="w-3.5 h-3.5"
+                          style={{ color: i <= Math.round(guide.rating) ? GOLD : "#e5e7eb" }}
+                          fill={i <= Math.round(guide.rating) ? GOLD : "none"}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-xs font-semibold" style={{ color: GOLD_D }}>{guide.rating}</span>
+                  </div>
+
+                  {/* Book button */}
+                  <button
+                    disabled={!canBook}
+                    onClick={() => handleBook(guide)}
+                    className="px-5 py-2 rounded-xl text-sm font-semibold transition-all"
+                    style={
+                      isBooked
+                        ? { background: "rgba(201,169,110,0.12)", color: GOLD_D, border: `1px solid rgba(201,169,110,0.3)`, cursor: "default" }
+                        : canBook
+                        ? { background: `linear-gradient(135deg,${GOLD},${GOLD_D})`, color: "#fff", border: "none", boxShadow: "0 2px 12px rgba(139,105,20,0.25)", cursor: "pointer" }
+                        : { background: "#f3f4f6", color: "#d1d5db", border: "none", cursor: "not-allowed" }
+                    }
+                    onMouseEnter={(e) => { if (canBook) e.currentTarget.style.opacity = "0.88"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
+                  >
+                    {isBooked ? (
+                      <span className="flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5" /> Booked
+                      </span>
+                    ) : canBook ? "Book guide" : "Unavailable"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Empty completed section ── handled gracefully ── */}
+        {booked.length > 0 && (
+          <div className="mt-12">
+            <div className="mb-5">
+              <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: GOLD, letterSpacing: "0.18em" }}>
+                Your bookings
+              </p>
+              <h2 className="text-xl font-bold text-gray-900" style={{ letterSpacing: "-0.01em" }}>
+                Confirmed requests
+              </h2>
+            </div>
+            <div className="space-y-3">
+              {booked.map((gid) => {
+                const g = guides.find((x) => x.id === gid);
+                if (!g) return null;
+                return (
+                  <div
+                    key={gid}
+                    className="flex items-center gap-4 rounded-xl px-5 py-4"
+                    style={{ background: "rgba(201,169,110,0.06)", border: `1px solid rgba(201,169,110,0.2)` }}
+                  >
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(201,169,110,0.15)" }}>
+                      <Check className="w-4 h-4" style={{ color: GOLD_D }} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 text-sm">{g.name}</p>
+                      <p className="text-xs" style={{ color: "#999" }}>{g.city} · {g.rate} Dh/hr</p>
+                    </div>
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: "#dcfce7", color: "#15803d" }}>
+                      Confirmed
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <Footer />
+    </div>
+  );
+}

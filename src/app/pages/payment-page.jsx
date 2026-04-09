@@ -1,176 +1,290 @@
 import { useState } from "react";
-import { useParams, useNavigate } from "react-router";
-import { CreditCard, Lock, Check } from "lucide-react";
+import { useParams, useNavigate, Link } from "react-router";
+import { CreditCard, Lock, Check, ChevronLeft, MapPin, Star, Shield } from "lucide-react";
 import { Navbar } from "../components/navbar";
-import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { hotels } from "../data/hotels";
 import { formatMad } from "../lib/currency";
+
+const GOLD   = "#C9A96E";
+const GOLD_D = "#8B6914";
+const NAVY   = "#1A1A2E";
+
+function FieldLabel({ children }) {
+  return (
+    <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: GOLD_D, letterSpacing: "0.1em" }}>
+      {children}
+    </label>
+  );
+}
+function GoldInput({ icon: Icon, ...props }) {
+  return (
+    <div className="relative">
+      {Icon && <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: GOLD }} />}
+      <Input
+        {...props}
+        className={`h-11 rounded-xl text-gray-900 ${Icon ? "pl-10" : ""}`}
+        style={{ border: "1.5px solid #E8D5A3", background: "#FFFDF7" }}
+      />
+    </div>
+  );
+}
+
 export function PaymentPage() {
-    const { id } = useParams();
-    const navigate = useNavigate();
-    const hotel = hotels.find((h) => h.id === id);
-    const [paymentData, setPaymentData] = useState({
-        cardNumber: "",
-        cardName: "",
-        expiryDate: "",
-        cvv: "",
-    });
-    const [isProcessing, setIsProcessing] = useState(false);
-    const [isComplete, setIsComplete] = useState(false);
-    if (!hotel) {
-        return <div>Hotel not found</div>;
-    }
-    const selectedRoom = hotel.rooms[0];
-    const nights = 4;
-    const subtotal = selectedRoom.price * nights;
-    const serviceFee = Math.round(subtotal * 0.1);
-    const taxes = Math.round(subtotal * 0.12);
-    const total = subtotal + serviceFee + taxes;
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        setIsProcessing(true);
-        setTimeout(() => {
-            setIsProcessing(false);
-            setIsComplete(true);
-            setTimeout(() => {
-                navigate("/", { viewTransition: true });
-            }, 2000);
-        }, 2000);
-    };
-    if (isComplete) {
-        return (<div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="max-w-2xl mx-auto px-8 py-32 text-center">
-          <div className="bg-white rounded-2xl shadow-lg p-12">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Check className="w-10 h-10 text-green-600"/>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">Payment Confirmed</h1>
-            <p className="text-gray-600 mb-2">Your booking in Morocco is confirmed.</p>
-            <p className="text-sm text-gray-500">Redirecting to home…</p>
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const hotel = hotels.find((h) => h.id === id);
+
+  const [form, setForm] = useState({ cardNumber: "", cardName: "", expiryDate: "", cvv: "" });
+  const [processing, setProcessing] = useState(false);
+  const [complete, setComplete]     = useState(false);
+
+  if (!hotel) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: "#FAFAF8" }}>
+        <p className="text-xl font-bold text-gray-900">Property not found</p>
+        <Link to="/home">
+          <button className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg,${GOLD},${GOLD_D})`, border: "none" }}>
+            Back to Home
+          </button>
+        </Link>
+      </div>
+    );
+  }
+
+  const selectedRoom = hotel.rooms[0];
+  const nights    = 4;
+  const subtotal  = selectedRoom.price * nights;
+  const service   = Math.round(subtotal * 0.1);
+  const taxes     = Math.round(subtotal * 0.12);
+  const total     = subtotal + service + taxes;
+
+  const handleCardNumber = (e) => {
+    const v = e.target.value.replace(/\D/g, "").slice(0, 16);
+    setForm((p) => ({ ...p, cardNumber: v.match(/.{1,4}/g)?.join(" ") ?? v }));
+  };
+  const handleExpiry = (e) => {
+    const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+    setForm((p) => ({ ...p, expiryDate: v.length >= 2 ? `${v.slice(0,2)}/${v.slice(2)}` : v }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setProcessing(true);
+    setTimeout(() => {
+      setProcessing(false);
+      setComplete(true);
+      setTimeout(() => navigate("/home", { viewTransition: true }), 3000);
+    }, 2000);
+  };
+
+  /* ── Success screen ── */
+  if (complete) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: NAVY }}>
+        <div
+          className="max-w-md w-full rounded-2xl p-10 text-center"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(201,169,110,0.25)", backdropFilter: "blur(16px)" }}
+        >
+          {/* Check circle */}
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
+            style={{ background: "rgba(201,169,110,0.15)", border: `2px solid ${GOLD}` }}
+          >
+            <Check className="w-9 h-9" style={{ color: GOLD }} />
           </div>
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: GOLD, letterSpacing: "0.2em" }}>
+            Booking confirmed
+          </p>
+          <h1 className="text-2xl font-bold text-white mb-2" style={{ letterSpacing: "-0.02em" }}>
+            Payment successful!
+          </h1>
+          <p className="text-sm mb-1" style={{ color: "rgba(255,255,255,0.5)" }}>
+            Your stay at <span style={{ color: GOLD }}>{hotel.name}</span> is confirmed.
+          </p>
+          <p className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>Redirecting to home…</p>
+
+          <div
+            className="mt-6 h-1 rounded-full overflow-hidden"
+            style={{ background: "rgba(255,255,255,0.08)" }}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{ background: `linear-gradient(90deg,${GOLD},${GOLD_D})`, animation: "progress 3s linear forwards" }}
+            />
+          </div>
+          <style>{`@keyframes progress { from { width: 0% } to { width: 100% } }`}</style>
         </div>
-      </div>);
-    }
-    return (<div className="min-h-screen bg-gray-50">
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen" style={{ background: "#FAFAF8" }}>
       <Navbar />
 
-      <div className="max-w-6xl mx-auto px-8 py-12">
-        <h1 className="text-4xl font-bold text-gray-900 mb-10">Secure Payment</h1>
+      <div className="max-w-6xl mx-auto px-6 py-10">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 mb-7 text-sm" style={{ color: GOLD_D }}>
+          <Link to={`/reservation/${hotel.id}`} className="flex items-center gap-1 hover:opacity-70 transition-opacity font-medium">
+            <ChevronLeft className="w-4 h-4" /> Back
+          </Link>
+          <span style={{ color: GOLD }}>·</span>
+          <span style={{ color: "#999" }}>Payment</span>
+        </div>
+
+        <h1 className="font-bold text-gray-900 mb-8" style={{ fontSize: "1.7rem", letterSpacing: "-0.02em" }}>
+          Secure payment
+        </h1>
 
         <div className="grid grid-cols-3 gap-10">
-          
+          {/* ── Payment form ── */}
           <div className="col-span-2">
-            <div className="bg-white rounded-2xl shadow-md p-8">
-              <div className="flex items-center gap-2 mb-6">
-                <Lock className="w-5 h-5 text-green-600"/>
-                  <span className="text-sm text-gray-600">Your payment details are secured (demo UI)</span>
+            <div
+              className="rounded-2xl p-8"
+              style={{ background: "#fff", border: "1px solid #EDE8DF", boxShadow: "0 2px 16px rgba(26,26,46,0.06)" }}
+            >
+              <div className="h-1 rounded-full mb-7" style={{ background: `linear-gradient(90deg,${GOLD},${GOLD_D})` }} />
+
+              {/* Security badge */}
+              <div
+                className="flex items-center gap-2 mb-6 px-4 py-2.5 rounded-xl text-sm"
+                style={{ background: "rgba(201,169,110,0.06)", border: `1px solid rgba(201,169,110,0.2)` }}
+              >
+                <Shield className="w-4 h-4" style={{ color: GOLD }} />
+                <span style={{ color: GOLD_D, fontSize: "0.82rem" }}>
+                  Your payment details are encrypted and secured (demo UI)
+                </span>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-2">Name on card</label>
-                  <div className="relative">
-                    <Input type="text" placeholder="Prénom Nom" value={paymentData.cardName} onChange={(e) => setPaymentData({ ...paymentData, cardName: e.target.value })} className="h-14 rounded-xl border-gray-300 bg-gray-50 text-black placeholder:text-gray-500" required/>
-                  </div>
+                  <FieldLabel>Name on card</FieldLabel>
+                  <GoldInput type="text" placeholder="Youssef Alami" value={form.cardName}
+                    onChange={(e) => setForm((p) => ({ ...p, cardName: e.target.value }))} required />
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-600 mb-2">Card number</label>
-                  <div className="relative">
-                    <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"/>
-                    <Input type="text" placeholder="1234 5678 9012 3456" value={paymentData.cardNumber} onChange={(e) => {
-            const value = e.target.value.replace(/\s/g, '');
-            const formatted = value.match(/.{1,4}/g)?.join(' ') || value;
-            setPaymentData({ ...paymentData, cardNumber: formatted });
-        }} className="pl-11 h-14 rounded-xl border-gray-300 bg-gray-50 text-black placeholder:text-gray-500" maxLength={19} required/>
-                  </div>
+                  <FieldLabel>Card number</FieldLabel>
+                  <GoldInput icon={CreditCard} type="text" placeholder="1234 5678 9012 3456"
+                    value={form.cardNumber} onChange={handleCardNumber} maxLength={19} required />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-600 mb-2">Expiration</label>
-                    <Input type="text" placeholder="MM/YY" value={paymentData.expiryDate} onChange={(e) => {
-            const value = e.target.value.replace(/\D/g, '');
-            const formatted = value.length >= 2 ? `${value.slice(0, 2)}/${value.slice(2, 4)}` : value;
-            setPaymentData({ ...paymentData, expiryDate: formatted });
-        }} className="h-14 rounded-xl border-gray-300 bg-gray-50 text-black placeholder:text-gray-500" maxLength={5} required/>
+                    <FieldLabel>Expiry date</FieldLabel>
+                    <GoldInput type="text" placeholder="MM/YY" value={form.expiryDate}
+                      onChange={handleExpiry} maxLength={5} required />
                   </div>
-
                   <div>
-                    <label className="block text-sm text-gray-600 mb-2">CVV</label>
-                    <Input type="text" placeholder="123" value={paymentData.cvv} onChange={(e) => setPaymentData({ ...paymentData, cvv: e.target.value.replace(/\D/g, '') })} className="h-14 rounded-xl border-gray-300 bg-gray-50 text-black placeholder:text-gray-500" maxLength={3} required/>
+                    <FieldLabel>CVV</FieldLabel>
+                    <GoldInput icon={Lock} type="text" placeholder="123"
+                      value={form.cvv}
+                      onChange={(e) => setForm((p) => ({ ...p, cvv: e.target.value.replace(/\D/g,"").slice(0,3) }))}
+                      maxLength={3} required />
                   </div>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-6">
-                  <p className="text-sm text-blue-800">
-                    By confirming, you agree to the booking and cancellation terms (demo).
-                  </p>
+                {/* Terms note */}
+                <div
+                  className="rounded-xl px-4 py-3 text-xs"
+                  style={{ background: "rgba(201,169,110,0.05)", border: `1px solid rgba(201,169,110,0.15)`, color: "#999" }}
+                >
+                  By confirming, you agree to MoroccanStay's booking and cancellation terms.
                 </div>
 
-                <Button type="submit" disabled={isProcessing} className="w-full h-14 bg-[#2563EB] hover:bg-[#1d4ed8] text-white rounded-xl text-lg mt-8 disabled:opacity-50">
-                  {isProcessing ? (<span className="flex items-center gap-2">
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <button
+                  type="submit"
+                  disabled={processing}
+                  className="w-full h-12 rounded-xl font-bold text-sm tracking-wide transition-all flex items-center justify-center gap-2"
+                  style={{
+                    background: processing ? "rgba(201,169,110,0.4)" : `linear-gradient(135deg,${GOLD},${GOLD_D})`,
+                    color: "#fff",
+                    border: "none",
+                    letterSpacing: "0.04em",
+                    boxShadow: processing ? "none" : "0 4px 20px rgba(139,105,20,0.3)",
+                    cursor: processing ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {processing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       Processing payment…
-                    </span>) : (`Payer ${formatMad(total)}`)}
-                </Button>
+                    </>
+                  ) : (
+                    `Pay ${formatMad(total)}`
+                  )}
+                </button>
               </form>
             </div>
           </div>
 
-          
+          {/* ── Summary ── */}
           <div className="col-span-1">
-            <div className="bg-white rounded-2xl shadow-md p-6 sticky top-24">
-              <h3 className="text-xl font-semibold text-gray-900 mb-6">Récapitulatif</h3>
+            <div
+              className="sticky top-24 rounded-2xl p-6"
+              style={{ background: "#fff", border: "1px solid #EDE8DF", boxShadow: "0 8px 32px rgba(26,26,46,0.08)" }}
+            >
+              <div className="h-1 rounded-full mb-5" style={{ background: `linear-gradient(90deg,${GOLD},${GOLD_D})` }} />
 
-              <div className="mb-6">
-                <img src={hotel.image} alt={hotel.name} className="w-full h-40 object-cover rounded-xl mb-4"/>
-                <h4 className="font-semibold text-gray-900 mb-1">{hotel.name}</h4>
-                <p className="text-sm text-gray-600">{hotel.location}</p>
+              {/* Hotel */}
+              <div className="mb-5">
+                <div className="relative overflow-hidden rounded-xl mb-3" style={{ height: 120 }}>
+                  <img src={hotel.image} alt={hotel.name} className="w-full h-full object-cover" />
+                  <div
+                    className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold"
+                    style={{ background: "rgba(26,26,46,0.82)", color: GOLD }}
+                  >
+                    <Star className="w-3 h-3 fill-current" /> {hotel.rating}
+                  </div>
+                </div>
+                <p className="font-bold text-gray-900 text-sm">{hotel.name}</p>
+                <p className="flex items-center gap-1 text-xs mt-0.5" style={{ color: GOLD_D }}>
+                  <MapPin className="w-3 h-3" /> {hotel.location}
+                </p>
               </div>
 
-              <div className="space-y-3 mb-6 pb-6 border-b border-gray-200">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Room</span>
-                  <span className="text-gray-900 font-medium">{selectedRoom.name}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Dates</span>
-                  <span className="text-gray-900 font-medium">20–24 Feb 2026</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Nights</span>
-                  <span className="text-gray-900 font-medium">{nights}</span>
-                </div>
+              {/* Booking details */}
+              <div
+                className="rounded-xl px-4 py-3 mb-4 space-y-2 text-xs"
+                style={{ background: "#FFFDF7", border: "1px solid #EDE8DF" }}
+              >
+                {[
+                  ["Room",   selectedRoom.name],
+                  ["Dates",  "20–24 Feb 2026"],
+                  ["Nights", nights],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between">
+                    <span style={{ color: "#999" }}>{k}</span>
+                    <span className="font-semibold text-gray-800">{v}</span>
+                  </div>
+                ))}
               </div>
 
-              <div className="space-y-2 mb-6">
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>
-                    {formatMad(selectedRoom.price)} × {nights} nuits
-                  </span>
-                  <span>{formatMad(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Service fee</span>
-                  <span>{formatMad(serviceFee)}</span>
-                </div>
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Tax (est.)</span>
-                  <span>{formatMad(taxes)}</span>
-                </div>
+              {/* Price breakdown */}
+              <div className="space-y-2 mb-4 text-sm">
+                {[
+                  [`${formatMad(selectedRoom.price)} × ${nights} nuits`, formatMad(subtotal)],
+                  ["Service fee",                                          formatMad(service)],
+                  ["Tax (est.)",                                           formatMad(taxes)],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between text-gray-500">
+                    <span>{k}</span><span>{v}</span>
+                  </div>
+                ))}
               </div>
 
-              <div className="flex justify-between items-center pt-4 border-t border-gray-200">
-                <span className="text-lg font-semibold text-gray-900">Total</span>
-                <span className="text-2xl font-bold text-[#2563EB]">{formatMad(total)}</span>
+              <div
+                className="flex justify-between items-center pt-4 font-bold"
+                style={{ borderTop: "1px solid #EDE8DF", color: NAVY }}
+              >
+                <span>Total</span>
+                <span style={{ fontSize: "1.25rem" }}>{formatMad(total)}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>);
+    </div>
+  );
 }
-
