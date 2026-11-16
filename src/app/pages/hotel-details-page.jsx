@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useParams, Link } from "react-router";
+import { useEffect, useState } from "react";
+import { useParams, Link, useNavigate } from "react-router";
 import {
   MapPin, Star, Wifi, Waves, Car, Wind, Coffee, Dumbbell,
   Sparkles, UtensilsCrossed, Calendar, Users, Trees, Bath,
@@ -8,9 +8,9 @@ import {
 import { Navbar } from "../components/navbar";
 import { Footer } from "../components/footer";
 import { AuthModal } from "../components/AuthModal";
-import { hotels } from "../data/hotels";
 import { formatMad } from "../lib/currency";
 import { useAuth } from "../hooks/useAuth";
+import { useAppData } from "../hooks/useAppData";
 
 const GOLD   = "#C9A96E";
 const GOLD_D = "#8B6914";
@@ -75,7 +75,10 @@ function FieldLabel({ children }) {
 export function HotelDetailsPage() {
   const { id } = useParams();
   const { isLoggedIn, session } = useAuth();
+  const { hotels, listApprovedReviews, submitReviewPending } = useAppData();
+  const navigate = useNavigate();
   const hotel = hotels.find(h => h.id === id);
+  const [pendingBook, setPendingBook] = useState(false);
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [checkIn,  setCheckIn]  = useState("");
@@ -89,6 +92,29 @@ export function HotelDetailsPage() {
   const [newText,    setNewText]    = useState("");
   const [reviewSent, setReviewSent] = useState(false);
   const [helpfulIds, setHelpfulIds] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const approved = await listApprovedReviews(id);
+        if (!alive) return;
+        if (approved?.length) {
+          // merge: show approved first, then existing demo
+          const demo = INIT_REVIEWS[id] || [];
+          const merged = [
+            ...approved.map((r) => ({ ...r, pending: false, helpful: r.helpful ?? 0 })),
+            ...demo,
+          ];
+          // dedupe by id
+          const seen = new Set();
+          setReviews(merged.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true))));
+        }
+      } catch {
+        // ignore, keep demo reviews
+      }
+    })();
+    return () => { alive = false; };
+  }, [id, listApprovedReviews]);
 
   /* Auth modal */
   const [authOpen,   setAuthOpen]   = useState(false);
@@ -115,8 +141,11 @@ export function HotelDetailsPage() {
 
   const handleBookNow = () => {
     if (!isLoggedIn) {
-      setAuthReason("Please sign in to make a reservation.");
+      setPendingBook(true);
+      setAuthReason("Sign in or create an account to book this property.");
       setAuthOpen(true);
+    } else {
+      navigate(`/reservation/${hotel.id}`, { viewTransition: true });
     }
   };
 
@@ -141,12 +170,8 @@ export function HotelDetailsPage() {
     setNewRating(0);
     setNewText("");
     setReviewSent(true);
-    /* Save to localStorage for admin to read */
-    const pending = JSON.parse(localStorage.getItem("ms_pending_reviews") || "[]");
-    localStorage.setItem("ms_pending_reviews", JSON.stringify([
-      ...pending,
-      { ...review, hotelId:id, hotelName:hotel.name, userId:session?.id },
-    ]));
+    submitReviewPending({ ...review, hotelId:id, hotelName:hotel.name, userId:session?.id })
+      .catch(() => {});
   };
 
   const toggleHelpful = (rid) => {
@@ -167,8 +192,14 @@ export function HotelDetailsPage() {
 
       <AuthModal
         open={authOpen}
-        onClose={() => setAuthOpen(false)}
-        onSuccess={() => setAuthOpen(false)}
+        onClose={() => { setAuthOpen(false); setPendingBook(false); }}
+        onSuccess={() => {
+          setAuthOpen(false);
+          if (pendingBook) {
+            setPendingBook(false);
+            navigate(`/reservation/${hotel.id}`, { viewTransition: true });
+          }
+        }}
         reason={authReason}
       />
 
@@ -454,25 +485,21 @@ export function HotelDetailsPage() {
                 </div>
               </div>
 
-              <Link
-                to={isLoggedIn ? `/reservation/${hotel.id}` : "#"}
-                onClick={!isLoggedIn ? handleBookNow : undefined}
-                viewTransition={isLoggedIn}
+              <button
+                type="button"
+                onClick={handleBookNow}
+                style={{
+                  width:"100%", height:48, borderRadius:14, fontWeight:700, fontSize:14,
+                  background:`linear-gradient(135deg,${GOLD},${GOLD_D})`,
+                  color:"#fff", border:"none", cursor:"pointer",
+                  boxShadow:"0 4px 20px rgba(139,105,20,0.3)",
+                  letterSpacing:"0.04em",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.opacity=".9"; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity="1"; }}
               >
-                <button type="button"
-                  style={{
-                    width:"100%", height:48, borderRadius:14, fontWeight:700, fontSize:14,
-                    background:`linear-gradient(135deg,${GOLD},${GOLD_D})`,
-                    color:"#fff", border:"none", cursor:"pointer",
-                    boxShadow:"0 4px 20px rgba(139,105,20,0.3)",
-                    letterSpacing:"0.04em",
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.opacity=".9"; }}
-                  onMouseLeave={e => { e.currentTarget.style.opacity="1"; }}
-                >
-                  {isLoggedIn ? "Book Now" : "Sign in to Book"}
-                </button>
-              </Link>
+                {isLoggedIn ? "Book Now →" : "Sign in & Book →"}
+              </button>
 
               <p style={{ textAlign:"center", fontSize:11, color:"#bbb", marginTop:10 }}>
                 Free cancellation · No hidden fees

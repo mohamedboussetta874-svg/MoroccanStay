@@ -3,8 +3,8 @@ import { Link, useSearchParams } from "react-router";
 import { MapPin, Star, Search } from "lucide-react";
 import { Navbar } from "../components/navbar";
 import { Footer } from "../components/footer";
-import { hotels } from "../data/hotels";
 import { formatMad } from "../lib/currency";
+import { useAppData } from "../hooks/useAppData";
 
 const GOLD   = "#C9A96E";
 const GOLD_D = "#8B6914";
@@ -57,11 +57,8 @@ const CITIES = [
   { id:"laayoune",     name:"Laâyoune",       lat:27.1536, lng:-13.2034 },
 ];
 
-const HOTEL_NORMS = new Set(hotels.map(h => norm(h.location.split(",")[0])));
-const cityHasHotel = (name) => HOTEL_NORMS.has(norm(name));
-
 /* ════════ Leaflet Map Component ════════ */
-function MoroccoLeafletMap({ selected, onSelect }) {
+function MoroccoLeafletMap({ selected, onSelect, hotelCityNorms }) {
   const mapRef    = useRef(null);
   const leafletRef = useRef(null);
   const markersRef = useRef({});
@@ -118,7 +115,7 @@ function MoroccoLeafletMap({ selected, onSelect }) {
     markersRef.current = {};
 
     CITIES.forEach(city => {
-      const hasH = cityHasHotel(city.name);
+      const hasH = hotelCityNorms?.has(norm(city.name));
       const isSel = selected?.id === city.id;
 
       const icon = L.divIcon({
@@ -257,6 +254,7 @@ function HotelCard({ hotel, nights }) {
 
 /* ════════ PAGE ════════ */
 export function SearchResultsPage() {
+  const { hotels } = useAppData();
   const [searchParams, setSearchParams] = useSearchParams();
   const cityParam = searchParams.get("city")    ?? "";
   const checkIn   = searchParams.get("checkIn")  ?? "";
@@ -297,7 +295,11 @@ export function SearchResultsPage() {
     return hotels
       .filter(h => !q || norm(h.location).includes(q) || norm(h.name).includes(q))
       .sort((a, b) => b.rating - a.rating || a.price - b.price);
-  }, [cityParam]);
+  }, [cityParam, hotels]);
+
+  const hotelCityNorms = useMemo(() => {
+    return new Set(hotels.map((h) => norm(String(h.location || "").split(",")[0] || "")));
+  }, [hotels]);
 
   return (
     <div className="min-h-screen" style={{ background: "#FAFAF8" }}>
@@ -363,7 +365,7 @@ export function SearchResultsPage() {
             </div>
 
             {/* Real Leaflet map */}
-            <MoroccoLeafletMap selected={mapCity} onSelect={handleMapSelect} />
+            <MoroccoLeafletMap selected={mapCity} onSelect={handleMapSelect} hotelCityNorms={hotelCityNorms} />
 
             {/* Legend */}
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>

@@ -14,8 +14,8 @@ export function RoleSwitcher() {
   const { role, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleSwitchRole = () => { logout(); navigate("/select-role", { replace: true }); };
-  const handleLogout     = () => { logout(); navigate("/select-role", { replace: true }); };
+  const handleSwitchRole = () => { logout(); navigate("/login", { replace: true }); };
+  const handleLogout     = () => { logout(); navigate("/login", { replace: true }); };
 
   if (!role) return null;
 

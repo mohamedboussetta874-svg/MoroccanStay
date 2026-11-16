@@ -7,9 +7,10 @@ import {
 } from "lucide-react";
 import { Navbar } from "../components/navbar";
 import { AuthModal } from "../components/AuthModal";
-import { hotels } from "../data/hotels";
 import { formatMad } from "../lib/currency";
 import { useAuth } from "../hooks/useAuth";
+import { useAppData } from "../hooks/useAppData";
+import { toast } from "sonner";
 
 const GOLD   = "#C9A96E";
 const GOLD_D = "#8B6914";
@@ -53,6 +54,7 @@ export function ReservationPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isLoggedIn, session } = useAuth();
+  const { hotels, checkAvailability } = useAppData();
 
   const hotel = hotels.find(h => h.id === id);
 
@@ -96,7 +98,40 @@ export function ReservationPage() {
       setAuthOpen(true);
       return;
     }
-    navigate(`/payment/${hotel.id}`, { viewTransition:true });
+    (async () => {
+      const avail = await checkAvailability({
+        hotelId: hotel.id,
+        roomId: selectedRoom.id,
+        checkIn: form.checkIn,
+        checkOut: form.checkOut,
+      });
+      if (!avail.available) {
+        toast.error("No availability for these dates. Please change dates or room.");
+        return;
+      }
+      const draft = {
+        id: `d_${Date.now()}`,
+        userId: session?.id,
+        hotelId: hotel.id,
+        hotelName: hotel.name,
+        roomId: selectedRoom.id,
+        roomName: selectedRoom.name,
+        checkIn: form.checkIn,
+        checkOut: form.checkOut,
+        guests: Number(form.guests || 1),
+        fullName: form.fullName,
+        email: form.email,
+        phone: form.phone,
+        nights,
+        subtotal,
+        serviceFee,
+        guide: wantsGuide && selectedGuide ? { ...selectedGuide } : null,
+        total,
+        createdAt: new Date().toISOString(),
+      };
+      sessionStorage.setItem("ms_booking_draft", JSON.stringify(draft));
+      navigate(`/payment/${hotel.id}`, { viewTransition:true });
+    })().catch(() => toast.error("Failed to continue to payment."));
   };
 
   const handleAuthSuccess = () => {

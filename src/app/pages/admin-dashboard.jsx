@@ -19,6 +19,7 @@ import {
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../hooks/useAuth";
+import { useAppData } from "../hooks/useAppData";
 
 const GOLD   = "#C9A96E";
 const GOLD_D = "#8B6914";
@@ -209,7 +210,21 @@ function OccupancyRing({ value }) {
 export function AdminDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { logout, user } = useAuth();
+  const { logout, user, isMiniAdmin } = useAuth();
+  const {
+    hotels,
+    allHotels,
+    guides,
+    bookings: storedBookings,
+    pendingReviews: storedPendingReviews,
+    updateBookingStatus: updateStoredBookingStatus,
+    upsertHotel: upsertStoredHotel,
+    removeHotel: removeStoredHotel,
+    approveHotel: approveStoredHotel,
+    upsertGuide: upsertStoredGuide,
+    approveReview: approveStoredReview,
+    rejectReview: rejectStoredReview,
+  } = useAppData();
   const activeSection = tabFromSearch(searchParams.get("tab"));
 
   const [hotelList, setHotelList] = useState(hotelsData);
@@ -219,20 +234,30 @@ export function AdminDashboard() {
   const [bookingFilter, setBookingFilter] = useState("all");
 
   /* Reviews — merge demo + localStorage pending */
-  const [reviews, setReviews] = useState(() => {
-    const stored = JSON.parse(localStorage.getItem("ms_pending_reviews") || "[]");
-    const storedMapped = stored.map(r => ({ ...r, status:"pending" }));
-    /* avoid duplicates with demo */
-    const ids = new Set(storedMapped.map(r => r.id));
-    return [...storedMapped, ...DEMO_REVIEWS.filter(d => !ids.has(d.id))];
-  });
+  const [reviews, setReviews] = useState(() => [...DEMO_REVIEWS]);
 
-  /* Sync reviews to/from localStorage */
-  const syncReviews = (updated) => {
-    setReviews(updated);
-    const pendingOnly = updated.filter(r => !r.id.startsWith("dr")); /* don't persist demo */
-    localStorage.setItem("ms_pending_reviews", JSON.stringify(pendingOnly));
-  };
+  useEffect(() => {
+    const sourceHotels = Array.isArray(allHotels) && allHotels.length ? allHotels : hotels;
+    const scopedHotels = isMiniAdmin
+      ? sourceHotels.filter((h) => h.managerEmail === user || h.manager_email === user)
+      : sourceHotels;
+    if (Array.isArray(scopedHotels)) setHotelList(scopedHotels);
+  }, [allHotels, hotels, isMiniAdmin, user]);
+  useEffect(() => {
+    if (Array.isArray(guides) && guides.length) setGuideList(guides);
+  }, [guides]);
+  useEffect(() => {
+    const demo = INIT_BOOKINGS;
+    const stored = Array.isArray(storedBookings) ? storedBookings : [];
+    const byId = new Map();
+    [...stored, ...demo].forEach((b) => byId.set(b.id, b));
+    setBookings(Array.from(byId.values()));
+  }, [storedBookings]);
+  useEffect(() => {
+    const mapped = (storedPendingReviews || []).map((r) => ({ ...r, status: "pending" }));
+    const ids = new Set(mapped.map((r) => r.id));
+    setReviews([...mapped, ...DEMO_REVIEWS.filter((d) => !ids.has(d.id))]);
+  }, [storedPendingReviews]);
 
   /* Notifications panel */
   const [notifOpen,    setNotifOpen]    = useState(false);
@@ -241,7 +266,7 @@ export function AdminDashboard() {
   /* Forms */
   const [showHotelForm,setShowHotelForm]= useState(false);
   const [editingHotel, setEditingHotel] = useState(null);
-  const [hotelForm,    setHotelForm]    = useState({ name:"",location:"",price:"",rooms:"",rating:"" });
+  const [hotelForm,    setHotelForm]    = useState({ name:"",location:"",price:"",rooms:"",rating:"",description:"",amenities:"",imageUrls:"",roomsText:"" });
   const [showGuideForm,setShowGuideForm]= useState(false);
   const [guideForm,    setGuideForm]    = useState({ name:"",city:"",email:"" });
   const [settings,     setSettings]     = useState({
@@ -253,6 +278,10 @@ export function AdminDashboard() {
   const setTab = (tab) =>
     tab==="dashboard" ? setSearchParams({},{replace:true}) : setSearchParams({tab},{replace:true});
 
+  useEffect(() => {
+    if (isMiniAdmin && activeSection === "guides") setTab("dashboard");
+  }, [isMiniAdmin, activeSection]);
+
   const handleLogout = () => { logout(); navigate("/",{replace:true}); };
 
   /* ── Notifications ── */
@@ -263,8 +292,16 @@ export function AdminDashboard() {
   const openNotif    = (n) => { setSelectedNotif(n); markRead(n.id); };
 
   /* ── Bookings ── */
-  const updateBooking = (id, status) => {
-    setBookings(p=>p.map(b=>b.id===id?{...b,status}:b));
+  const updateBooking = async (id, status) => {
+    try {
+      if (String(id).startsWith("b_")) {
+        await updateStoredBookingStatus(id, status);
+      }
+      setBookings(p=>p.map(b=>b.id===id?{...b,status}:b));
+    } catch (e) {
+      toast.error(e?.message || "Failed to update booking");
+      return;
+    }
     const b = bookings.find(b=>b.id===id);
     if (b) {
       setNotifs(p=>[{ id:`n-${Date.now()}`, type:status==="confirmed"?"info":"alert", read:false,
@@ -273,44 +310,154 @@ export function AdminDashboard() {
     }
     toast.success(status==="confirmed"?"✅ Confirmed":status==="cancelled"?"❌ Cancelled":"🔄 Restored");
   };
-  const filteredBookings = bookings.filter(b=>bookingFilter==="all"||b.status===bookingFilter);
+  const ownedHotelIds = new Set(hotelList.map((h) => String(h.id)));
+  const ownedHotelNames = new Set(hotelList.map((h) => h.name));
+  const scopedBookings = isMiniAdmin
+    ? bookings.filter((b) => ownedHotelIds.has(String(b.hotelId)) || ownedHotelNames.has(b.hotel))
+    : bookings;
+  const scopedReviews = isMiniAdmin
+    ? reviews.filter((r) => ownedHotelIds.has(String(r.hotelId)) || ownedHotelNames.has(r.hotelName))
+    : reviews;
+  const filteredBookings = scopedBookings.filter(b=>bookingFilter==="all"||b.status===bookingFilter);
 
   /* ── Reviews ── */
-  const approveReview = (id) => {
-    const updated = reviews.map(r=>r.id===id?{...r,status:"approved"}:r);
-    syncReviews(updated);
-    toast.success("✅ Review approved and published");
+  const approveReview = async (id) => {
+    try {
+      if (!String(id).startsWith("dr")) await approveStoredReview(id);
+      setReviews((p) => p.map((r) => (r.id === id ? { ...r, status: "approved" } : r)));
+      toast.success("✅ Review approved and published");
+    } catch (e) {
+      toast.error(e?.message || "Failed to approve review");
+    }
   };
-  const rejectReview = (id) => {
-    const updated = reviews.filter(r=>r.id!==id);
-    syncReviews(updated);
-    toast.success("🗑 Review removed");
+  const rejectReview = async (id) => {
+    try {
+      if (!String(id).startsWith("dr")) await rejectStoredReview(id);
+      setReviews((p) => p.filter((r) => r.id !== id));
+      toast.success("🗑 Review removed");
+    } catch (e) {
+      toast.error(e?.message || "Failed to remove review");
+    }
   };
 
-  const pendingReviews  = reviews.filter(r=>r.status==="pending").length;
-  const approvedReviews = reviews.filter(r=>r.status==="approved").length;
-  const pendingCount    = bookings.filter(b=>b.status==="pending").length;
+  const pendingHotels = hotelList.filter((h) => h.status === "pending").length;
+  const approvedHotels = hotelList.filter((h) => !h.status || h.status === "active" || h.status === "approved").length;
+  const pendingReviews  = scopedReviews.filter(r=>r.status==="pending").length;
+  const approvedReviews = scopedReviews.filter(r=>r.status==="approved").length;
+  const pendingCount    = scopedBookings.filter(b=>b.status==="pending").length;
+  const confirmedBookings = scopedBookings.filter(b=>b.status==="confirmed");
+  const totalRevenue = confirmedBookings.reduce((sum, b) => sum + Number(b.amount || 0), 0);
+  const uniqueGuests = new Set(scopedBookings.map((b) => b.guest).filter(Boolean)).size;
 
   /* ── Hotels ── */
-  const openAddHotel = () => { setEditingHotel(null); setHotelForm({name:"",location:"",price:"",rooms:"",rating:""}); setShowHotelForm(true); };
-  const openEditHotel = (h) => { setEditingHotel(h); setHotelForm({name:h.name,location:h.location,price:String(h.price),rooms:String(h.rooms||""),rating:String(h.rating||"")}); setShowHotelForm(true); };
-  const saveHotel = () => {
+  const emptyHotelForm = { name:"",location:"",price:"",rooms:"",rating:"",description:"",amenities:"",imageUrls:"",roomsText:"" };
+  const parseImageUrls = () => hotelForm.imageUrls.split(/\r?\n/).map((url)=>url.trim()).filter(Boolean);
+  const readImageFile = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const addImageFiles = async (files) => {
+    const selected = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+    if (!selected.length) return;
+    try {
+      const imageData = await Promise.all(selected.map(readImageFile));
+      setHotelForm((prev) => ({
+        ...prev,
+        imageUrls: [prev.imageUrls, ...imageData].filter(Boolean).join("\n"),
+      }));
+    } catch {
+      toast.error("Failed to read selected images");
+    }
+  };
+  const parseRooms = () => {
+    const rows = hotelForm.roomsText.split(/\r?\n/).map((line)=>line.trim()).filter(Boolean);
+    if (!rows.length) return [{id:"r1",name:"Standard Room",price:+hotelForm.price,capacity:2}];
+    return rows.map((line, index) => {
+      const [name, price, capacity] = line.split("|").map((part)=>part.trim());
+      return {
+        id:`r${index + 1}`,
+        name:name || `Room ${index + 1}`,
+        price:Number(price || hotelForm.price || 0),
+        capacity:Number(capacity || 2),
+      };
+    });
+  };
+  const openAddHotel = () => { setEditingHotel(null); setHotelForm(emptyHotelForm); setShowHotelForm(true); };
+  const openEditHotel = (h) => { setEditingHotel(h); setHotelForm({name:h.name,location:h.location,price:String(h.price),rooms:String(h.rooms?.length || h.rooms || ""),rating:String(h.rating||""),description:h.description||"",amenities:(h.amenities||[]).join(", "),imageUrls:(h.images || (h.image ? [h.image] : [])).join("\n"),roomsText:(Array.isArray(h.rooms)?h.rooms:[]).map((r)=>`${r.name} | ${r.price} | ${r.capacity || 2}`).join("\n")}); setShowHotelForm(true); };
+  const saveHotel = async () => {
     if(!hotelForm.name||!hotelForm.location||!hotelForm.price){toast.error("Fill required fields");return;}
+    const images = parseImageUrls();
+    const rooms = parseRooms();
     if(editingHotel){
-      setHotelList(p=>p.map(h=>h.id===editingHotel.id?{...h,name:hotelForm.name,location:hotelForm.location,price:+hotelForm.price,rooms:+hotelForm.rooms||h.rooms,rating:+hotelForm.rating||h.rating}:h));
-      toast.success(`"${hotelForm.name}" updated`);
+      const updated = {
+        ...editingHotel,
+        name:hotelForm.name,
+        location:hotelForm.location,
+        price:+hotelForm.price,
+        rating:+hotelForm.rating||editingHotel.rating,
+        image:images[0] || editingHotel.image || "",
+        images,
+        description:hotelForm.description,
+        amenities:hotelForm.amenities.split(",").map((a)=>a.trim()).filter(Boolean),
+        rooms,
+        status:isMiniAdmin ? "pending" : (editingHotel.status || "active"),
+        managerEmail:editingHotel.managerEmail || (isMiniAdmin ? user : editingHotel.managerEmail),
+        manager_email:editingHotel.manager_email || editingHotel.managerEmail || (isMiniAdmin ? user : editingHotel.manager_email),
+      };
+      await upsertStoredHotel(updated);
+      setHotelList(p=>p.map(h=>h.id===editingHotel.id?updated:h));
+      toast.success(isMiniAdmin ? `"${hotelForm.name}" sent for approval` : `"${hotelForm.name}" updated`);
     } else {
-      setHotelList(p=>[...p,{id:`h-${Date.now()}`,name:hotelForm.name,location:hotelForm.location,price:+hotelForm.price,rooms:+hotelForm.rooms||0,rating:+hotelForm.rating||0,guests:0,image:"",images:[],description:"",amenities:[],roomsList:[]}]);
-      toast.success(`"${hotelForm.name}" added`);
+      const nh = {
+        id:`h-${Date.now()}`,
+        name:hotelForm.name,
+        location:hotelForm.location,
+        price:+hotelForm.price,
+        guests:0,
+        rating:+hotelForm.rating||0,
+        image:images[0] || "",
+        images,
+        description:hotelForm.description,
+        amenities:hotelForm.amenities.split(",").map((a)=>a.trim()).filter(Boolean),
+        rooms,
+        status:isMiniAdmin ? "pending" : "active",
+        managerEmail:isMiniAdmin ? user : "",
+        manager_email:isMiniAdmin ? user : "",
+        submittedAt:new Date().toISOString(),
+      };
+      await upsertStoredHotel(nh);
+      setHotelList(p=>[...p,nh]);
+      toast.success(isMiniAdmin ? `"${hotelForm.name}" sent to admin for approval` : `"${hotelForm.name}" added`);
     }
     setShowHotelForm(false);
   };
-  const deleteHotel = (id) => { setHotelList(p=>p.filter(h=>h.id!==id)); toast.success("Hotel removed"); };
+  const deleteHotel = async (id) => {
+    try {
+      await removeStoredHotel(id);
+      setHotelList(p=>p.filter(h=>h.id!==id));
+      toast.success("Hotel removed");
+    } catch (e) {
+      toast.error(e?.message || "Failed to delete hotel");
+    }
+  };
+  const approveHotel = async (id) => {
+    try {
+      const approved = await approveStoredHotel(id);
+      setHotelList((p) => p.map((h) => (String(h.id) === String(id) ? approved : h)));
+      toast.success(`"${approved.name}" approved and published`);
+    } catch (e) {
+      toast.error(e?.message || "Failed to approve hotel");
+    }
+  };
 
   /* ── Guides ── */
-  const saveGuide = () => {
+  const saveGuide = async () => {
     if(!guideForm.name||!guideForm.city||!guideForm.email){toast.error("Fill all fields");return;}
-    setGuideList(p=>[...p,{id:`g-${Date.now()}`,name:guideForm.name,city:guideForm.city,tours:0,status:"Actif",rating:0}]);
+    const ng = {id:`g-${Date.now()}`,name:guideForm.name,city:guideForm.city,email:guideForm.email,tours:0,status:"Actif",rating:0,rate:100,languages:"French, Arabic",available:true};
+    await upsertStoredGuide(ng);
+    setGuideList(p=>[...p,ng]);
     toast.success(`Invitation sent to ${guideForm.name}`);
     setShowGuideForm(false); setGuideForm({name:"",city:"",email:""});
   };
@@ -326,13 +473,13 @@ export function AdminDashboard() {
   const NAV = [
     { key:"dashboard", icon:LayoutDashboard, label:"Dashboard"                    },
     { key:"bookings",  icon:BookOpen,        label:"Bookings",  badge:pendingCount },
-    { key:"hotels",    icon:Hotel,           label:"Hotels"                        },
-    { key:"guides",    icon:MapPin,          label:"Guides"                        },
+    { key:"hotels",    icon:Hotel,           label:isMiniAdmin ? "My hotels" : "Hotels", badge:!isMiniAdmin ? pendingHotels : undefined },
+    { key:"guides",    icon:MapPin,          label:"Guides", adminOnly:true         },
     { key:"reviews",   icon:MessageSquare,   label:"Reviews",   badge:pendingReviews },
     { key:"analytics", icon:BarChart2,       label:"Analytics"                     },
     { key:"reports",   icon:FileText,        label:"Reports"                       },
     { key:"settings",  icon:Settings,        label:"Settings"                      },
-  ];
+  ].filter((item) => !item.adminOnly || !isMiniAdmin);
 
   return (
     <div className="flex h-screen" style={{ background:"#F5F4F0" }}>
@@ -372,7 +519,7 @@ export function AdminDashboard() {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-semibold truncate" style={{ color:"rgba(255,255,255,0.85)" }}>{user||"Admin"}</p>
-              <p className="text-xs" style={{ color:"rgba(255,255,255,0.3)" }}>Administrator</p>
+              <p className="text-xs" style={{ color:"rgba(255,255,255,0.3)" }}>{isMiniAdmin ? "Mini-admin" : "Administrator"}</p>
             </div>
           </div>
           <button type="button" onClick={handleLogout}
@@ -399,10 +546,10 @@ export function AdminDashboard() {
           {activeSection==="dashboard"&&(
             <div className="space-y-6">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-                <StatCard icon={Calendar}   iconBg="rgba(201,169,110,0.1)"  iconColor={GOLD}    badge="+12.5%" badgeColor="#15803d" badgeBg="#dcfce7" value="1,247"            label="Total Bookings"   sub={pendingCount>0?`${pendingCount} pending`:null} />
-                <StatCard icon={DollarSign} iconBg="rgba(74,155,127,0.1)"   iconColor="#4A9B7F" badge="+8.2%"  badgeColor="#15803d" badgeBg="#dcfce7" value={formatMad(894320)} label="Revenue"          />
-                <StatCard icon={Hotel}      iconBg="rgba(91,127,166,0.1)"   iconColor="#5B7FA6" badge="Active" badgeColor="#1d4ed8" badgeBg="#dbeafe" value={hotelList.length}  label="Active Hotels"    />
-                <StatCard icon={MessageSquare} iconBg="rgba(201,169,110,0.08)" iconColor={GOLD_D} badge={`${pendingReviews} pending`} badgeColor="#854d0e" badgeBg="#fef9c3" value={reviews.length} label="Total Reviews" />
+                <StatCard icon={Calendar}   iconBg="rgba(201,169,110,0.1)"  iconColor={GOLD}    badge={`${pendingCount} pending`} badgeColor="#854d0e" badgeBg="#fef9c3" value={scopedBookings.length} label="Total Bookings" sub={uniqueGuests ? `${uniqueGuests} clients` : null} />
+                <StatCard icon={DollarSign} iconBg="rgba(74,155,127,0.1)"   iconColor="#4A9B7F" badge={`${confirmedBookings.length} paid`} badgeColor="#15803d" badgeBg="#dcfce7" value={formatMad(totalRevenue)} label="Revenue" />
+                <StatCard icon={Hotel}      iconBg="rgba(91,127,166,0.1)"   iconColor="#5B7FA6" badge={pendingHotels ? `${pendingHotels} pending` : "Active"} badgeColor={pendingHotels ? "#854d0e" : "#1d4ed8"} badgeBg={pendingHotels ? "#fef9c3" : "#dbeafe"} value={approvedHotels} label={isMiniAdmin ? "Published Hotels" : "Active Hotels"} />
+                <StatCard icon={MessageSquare} iconBg="rgba(201,169,110,0.08)" iconColor={GOLD_D} badge={`${pendingReviews} pending`} badgeColor="#854d0e" badgeBg="#fef9c3" value={scopedReviews.length} label="Total Reviews" />
               </div>
               {pendingCount>0&&(
                 <div className="flex items-center gap-3 px-5 py-3.5 rounded-xl"
@@ -428,13 +575,13 @@ export function AdminDashboard() {
                   </button>
                 </div>
               )}
-              <TableCard title="Recent reservations">
+              <TableCard title={isMiniAdmin ? "Recent reservations in my hotels" : "Recent reservations"}>
                 <table className="w-full text-sm">
                   <thead style={{ background:"#FAFAF8", borderBottom:"1px solid #EDE8DF" }}>
                     <tr><Th>Guest</Th><Th>Hotel</Th><Th>Check-in</Th><Th>Amount</Th><Th>Status</Th></tr>
                   </thead>
                   <tbody>
-                    {bookings.slice(0,5).map(b=>(
+                    {scopedBookings.slice(0,5).map(b=>(
                       <tr key={b.id} className="hover:bg-gray-50 transition-colors" style={{ borderBottom:"1px solid #F0EDE6" }}>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2.5">
@@ -459,7 +606,7 @@ export function AdminDashboard() {
           {activeSection==="bookings"&&(
             <div className="space-y-5">
               <div className="flex gap-2 flex-wrap">
-                {[{key:"all",label:"All",count:bookings.length},{key:"pending",label:"Pending",count:bookings.filter(b=>b.status==="pending").length},{key:"confirmed",label:"Confirmed",count:bookings.filter(b=>b.status==="confirmed").length},{key:"cancelled",label:"Cancelled",count:bookings.filter(b=>b.status==="cancelled").length}]
+                {[{key:"all",label:"All",count:scopedBookings.length},{key:"pending",label:"Pending",count:scopedBookings.filter(b=>b.status==="pending").length},{key:"confirmed",label:"Confirmed",count:scopedBookings.filter(b=>b.status==="confirmed").length},{key:"cancelled",label:"Cancelled",count:scopedBookings.filter(b=>b.status==="cancelled").length}]
                   .map(({key,label,count})=>(
                     <button key={key} type="button" onClick={()=>setBookingFilter(key)}
                       className="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all"
@@ -538,7 +685,7 @@ export function AdminDashboard() {
           {activeSection==="hotels"&&(
             <div className="space-y-5">
               <div className="grid grid-cols-3 gap-4">
-                {[{label:"Listed properties",value:hotelList.length,accent:false},{label:"Pending updates",value:2,accent:false},{label:"Availability alerts",value:1,accent:true}]
+                {[{label:isMiniAdmin ? "My properties" : "Listed properties",value:hotelList.length,accent:false},{label:"Awaiting approval",value:pendingHotels,accent:pendingHotels>0},{label:"Published",value:approvedHotels,accent:false}]
                   .map(({label,value,accent})=>(
                     <div key={label} className="p-5 rounded-xl" style={{ background:"#fff", border:"1px solid #EDE8DF" }}>
                       <p className="text-xs text-gray-500 mb-1">{label}</p>
@@ -546,10 +693,10 @@ export function AdminDashboard() {
                     </div>
                   ))}
               </div>
-              <TableCard title={`Hotels (${hotelList.length})`} action={<GoldBtn onClick={openAddHotel}>+ Add hotel</GoldBtn>}>
+              <TableCard title={isMiniAdmin ? `My hotels (${hotelList.length})` : `Hotels (${hotelList.length})`} action={<GoldBtn onClick={openAddHotel}>{isMiniAdmin ? "+ Propose hotel" : "+ Add hotel"}</GoldBtn>}>
                 <table className="w-full text-sm">
                   <thead style={{ background:"#FAFAF8", borderBottom:"1px solid #EDE8DF" }}>
-                    <tr><Th>Name</Th><Th>City</Th><Th>Price / night</Th><Th>Rating</Th><Th right>Actions</Th></tr>
+                    <tr><Th>Name</Th><Th>City</Th><Th>Price / night</Th><Th>Rating</Th><Th>Status</Th><Th right>Actions</Th></tr>
                   </thead>
                   <tbody>
                     {hotelList.map(h=>(
@@ -559,7 +706,20 @@ export function AdminDashboard() {
                         <td className="px-5 py-3.5 font-semibold" style={{ color:GOLD_D }}>{formatMad(h.price)}</td>
                         <td className="px-5 py-3.5"><div className="flex items-center gap-1"><Star className="w-3.5 h-3.5 fill-current" style={{ color:GOLD }}/><span className="text-gray-700">{h.rating}</span></div></td>
                         <td className="px-5 py-3.5">
+                          <span className="inline-flex px-2.5 py-1 text-xs font-semibold rounded-full"
+                            style={h.status==="pending"?{background:"#fef9c3",color:"#854d0e"}:{background:"#dcfce7",color:"#15803d"}}>
+                            {h.status==="pending" ? "Pending approval" : "Published"}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2 justify-end">
+                            {!isMiniAdmin && h.status==="pending" && (
+                              <button type="button" onClick={()=>approveHotel(h.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+                                style={{ background:"#dcfce7", color:"#15803d", border:"1px solid #bbf7d0", cursor:"pointer" }}>
+                                <Check style={{width:12,height:12}}/> Approve
+                              </button>
+                            )}
                             <button type="button" onClick={()=>openEditHotel(h)}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
                               style={{ background:"rgba(201,169,110,0.1)", color:GOLD_D, border:`1px solid rgba(201,169,110,0.25)`, cursor:"pointer" }}>
@@ -615,7 +775,7 @@ export function AdminDashboard() {
               {/* Stats */}
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { label:"Total reviews",    value:reviews.length,  color:NAVY         },
+                  { label:"Total reviews",    value:scopedReviews.length,  color:NAVY         },
                   { label:"Pending",          value:pendingReviews,  color:"#854d0e"    },
                   { label:"Published",        value:approvedReviews, color:"#15803d"    },
                 ].map(({label,value,color})=>(
@@ -627,13 +787,13 @@ export function AdminDashboard() {
               </div>
 
               {/* Pending reviews */}
-              {reviews.filter(r=>r.status==="pending").length > 0 && (
+              {scopedReviews.filter(r=>r.status==="pending").length > 0 && (
                 <div>
                   <h3 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color:GOLD_D, letterSpacing:"0.12em" }}>
-                    Awaiting moderation ({reviews.filter(r=>r.status==="pending").length})
+                    Awaiting moderation ({scopedReviews.filter(r=>r.status==="pending").length})
                   </h3>
                   <div className="space-y-3">
-                    {reviews.filter(r=>r.status==="pending").map(r=>(
+                    {scopedReviews.filter(r=>r.status==="pending").map(r=>(
                       <div key={r.id} className="rounded-2xl p-5"
                         style={{ background:"#fff", border:`1px solid rgba(201,169,110,0.3)`, boxShadow:"0 2px 10px rgba(26,26,46,0.04)" }}>
                         <div className="flex items-start justify-between gap-4">
@@ -681,13 +841,13 @@ export function AdminDashboard() {
               )}
 
               {/* Approved reviews */}
-              {reviews.filter(r=>r.status==="approved").length > 0 && (
+              {scopedReviews.filter(r=>r.status==="approved").length > 0 && (
                 <div>
                   <h3 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color:"#15803d", letterSpacing:"0.12em" }}>
-                    Published ({reviews.filter(r=>r.status==="approved").length})
+                    Published ({scopedReviews.filter(r=>r.status==="approved").length})
                   </h3>
                   <div className="space-y-3">
-                    {reviews.filter(r=>r.status==="approved").map(r=>(
+                    {scopedReviews.filter(r=>r.status==="approved").map(r=>(
                       <div key={r.id} className="rounded-2xl p-5 flex items-start gap-4"
                         style={{ background:"#fff", border:"1px solid #EDE8DF", boxShadow:"0 2px 10px rgba(26,26,46,0.03)" }}>
                         <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
@@ -717,7 +877,7 @@ export function AdminDashboard() {
                 </div>
               )}
 
-              {reviews.length===0&&(
+              {scopedReviews.length===0&&(
                 <div className="py-16 text-center" style={{ border:"1px dashed #EDE8DF", borderRadius:16, color:"#bbb" }}>
                   <MessageSquare style={{width:28,height:28,margin:"0 auto 10px",opacity:.25}}/>
                   <p className="text-sm">No reviews yet.</p>
@@ -730,9 +890,9 @@ export function AdminDashboard() {
           {activeSection==="analytics"&&(
             <div className="space-y-6">
               <div className="grid grid-cols-3 gap-5">
-                <StatCard icon={DollarSign} iconBg="rgba(201,169,110,0.1)" iconColor={GOLD}    badge="+8.2%"  badgeColor="#15803d" badgeBg="#dcfce7" value={formatMad(125000)} label="April Revenue"  />
-                <StatCard icon={BookOpen}   iconBg="rgba(74,155,127,0.1)"  iconColor="#4A9B7F" badge="+6.5%"  badgeColor="#15803d" badgeBg="#dcfce7" value="98"              label="April Bookings" />
-                <StatCard icon={TrendingUp} iconBg="rgba(91,127,166,0.1)"  iconColor="#5B7FA6" badge="↑2.1%"  badgeColor="#15803d" badgeBg="#dcfce7" value="94.2%"          label="Occupancy Rate" />
+                <StatCard icon={DollarSign} iconBg="rgba(201,169,110,0.1)" iconColor={GOLD}    badge={`${confirmedBookings.length} confirmed`}  badgeColor="#15803d" badgeBg="#dcfce7" value={formatMad(totalRevenue)} label="Revenue"  />
+                <StatCard icon={BookOpen}   iconBg="rgba(74,155,127,0.1)"  iconColor="#4A9B7F" badge={`${pendingCount} pending`}  badgeColor="#854d0e" badgeBg="#fef9c3" value={scopedBookings.length} label="Bookings" />
+                <StatCard icon={TrendingUp} iconBg="rgba(91,127,166,0.1)"  iconColor="#5B7FA6" badge={pendingHotels ? `${pendingHotels} pending` : "Published"}  badgeColor={pendingHotels ? "#854d0e" : "#15803d"} badgeBg={pendingHotels ? "#fef9c3" : "#dcfce7"} value={approvedHotels} label={isMiniAdmin ? "Published Hotels" : "Active Hotels"} />
               </div>
               <div className="grid grid-cols-2 gap-5">
                 <div className="rounded-2xl p-6" style={{ background:"#fff", border:"1px solid #EDE8DF" }}>
@@ -750,9 +910,14 @@ export function AdminDashboard() {
                 </div>
               </div>
               <div className="rounded-2xl p-6" style={{ background:"#fff", border:"1px solid #EDE8DF" }}>
-                <h3 className="font-bold text-gray-900 mb-5 text-sm">Top performing hotels</h3>
+                <h3 className="font-bold text-gray-900 mb-5 text-sm">{isMiniAdmin ? "My hotels performance" : "Top performing hotels"}</h3>
                 <div className="space-y-3">
-                  {[{name:"Bahia Beach Resort",rev:248000,pct:85},{name:"Rivage Hôtel & Spa",rev:196000,pct:70},{name:"Hôtel Corniche Atlantique",rev:182000,pct:65},{name:"Riad Al Bahia",rev:156000,pct:55},{name:"Dar El Médina",rev:112000,pct:40}]
+                  {hotelList.slice(0,5).map((hotel) => {
+                    const rev = scopedBookings
+                      .filter((booking) => String(booking.hotelId) === String(hotel.id) || booking.hotel === hotel.name)
+                      .reduce((sum, booking) => sum + Number(booking.amount || 0), 0);
+                    return { name:hotel.name, rev, pct:totalRevenue ? Math.max(8, Math.round((rev / totalRevenue) * 100)) : 8 };
+                  })
                     .map(({name,rev,pct})=>(
                       <div key={name}>
                         <div className="flex items-center justify-between mb-1"><span className="text-sm text-gray-700">{name}</span><span className="text-sm font-semibold" style={{ color:GOLD_D }}>{formatMad(rev)}</span></div>
@@ -768,7 +933,7 @@ export function AdminDashboard() {
           {activeSection==="reports"&&(
             <div className="space-y-5">
               <div className="grid grid-cols-3 gap-4">
-                {[{label:"Cumulative revenue",value:formatMad(894320)},{label:"Total bookings",value:"1,247"},{label:"Occupancy rate",value:"94.2%"}]
+                {[{label:"Cumulative revenue",value:formatMad(totalRevenue)},{label:"Total bookings",value:scopedBookings.length},{label:"Published hotels",value:approvedHotels}]
                   .map(({label,value})=>(<div key={label} className="p-5 rounded-xl" style={{ background:"#fff", border:"1px solid #EDE8DF" }}><p className="text-xs text-gray-500 mb-1">{label}</p><p className="text-xl font-bold text-gray-900">{value}</p></div>))}
               </div>
               <div className="rounded-2xl p-7" style={{ background:"#fff", border:"1px solid #EDE8DF" }}>
@@ -777,7 +942,7 @@ export function AdminDashboard() {
                 <div className="flex gap-3 flex-wrap">
                   <GoldBtn onClick={exportCSV}><Download className="w-3.5 h-3.5"/> Export Hotels CSV</GoldBtn>
                   <GoldBtn outline onClick={()=>{
-                    const lines=[`MoroccanStay — Report`,`Generated: ${new Date().toLocaleString()}`,``,`Bookings: ${bookings.length} | Confirmed: ${bookings.filter(b=>b.status==="confirmed").length} | Pending: ${bookings.filter(b=>b.status==="pending").length}`,`Reviews: ${reviews.length} | Published: ${approvedReviews}`,``,`BOOKINGS`,`--------`,...bookings.map(b=>`${b.guest} | ${b.hotel} | ${b.checkIn}→${b.checkOut} | ${formatMad(b.amount)} | ${b.status}`)];
+                    const lines=[`MoroccanStay — Report`,`Generated: ${new Date().toLocaleString()}`,``,`Bookings: ${scopedBookings.length} | Confirmed: ${confirmedBookings.length} | Pending: ${pendingCount}`,`Reviews: ${scopedReviews.length} | Published: ${approvedReviews}`,``,`BOOKINGS`,`--------`,...scopedBookings.map(b=>`${b.guest} | ${b.hotel} | ${b.checkIn}→${b.checkOut} | ${formatMad(b.amount)} | ${b.status}`)];
                     const url=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/plain"}));
                     Object.assign(document.createElement("a"),{href:url,download:`report-${new Date().toISOString().split("T")[0]}.txt`}).click();
                     URL.revokeObjectURL(url); toast.success("Report exported");
@@ -904,10 +1069,10 @@ export function AdminDashboard() {
 
       {/* ══ HOTEL DIALOG ══ */}
       <Dialog open={showHotelForm} onOpenChange={setShowHotelForm}>
-        <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader><DialogTitle>{editingHotel?"Edit hotel":"Add hotel"}</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-lg rounded-2xl" style={{ maxHeight:"90vh", display:"flex", flexDirection:"column" }}>
+          <DialogHeader><DialogTitle>{editingHotel ? "Edit hotel" : isMiniAdmin ? "Propose hotel" : "Add hotel"}</DialogTitle></DialogHeader>
           <div className="h-0.5 rounded-full mb-2" style={{ background:`linear-gradient(90deg,${GOLD},${GOLD_D})` }}/>
-          <div className="space-y-4">
+          <div className="space-y-3 pr-1" style={{ overflowY:"auto", maxHeight:"calc(90vh - 150px)" }}>
             {[{id:"h-name",label:"Hotel name *",key:"name",type:"text",ph:"Riad Al Baraka"},{id:"h-loc",label:"City *",key:"location",type:"text",ph:"Marrakech, Maroc"},{id:"h-price",label:"Price / night (MAD) *",key:"price",type:"number",ph:"1200"},{id:"h-rooms",label:"Rooms",key:"rooms",type:"number",ph:"24"},{id:"h-rat",label:"Rating (0–5)",key:"rating",type:"number",ph:"4.8",step:"0.1"}]
               .map(({id,label,key,type,ph,step})=>(
                 <div key={id}>
@@ -916,10 +1081,60 @@ export function AdminDashboard() {
                     onChange={e=>setHotelForm(p=>({...p,[key]:e.target.value}))} className="rounded-xl mt-1.5"/>
                 </div>
               ))}
+            <div>
+              <Label htmlFor="h-desc" className="text-xs font-bold uppercase tracking-wider" style={{ color:GOLD_D }}>Description</Label>
+              <textarea id="h-desc" rows={2} placeholder="Describe the hotel, location and guest experience"
+                value={hotelForm.description}
+                onChange={e=>setHotelForm(p=>({...p,description:e.target.value}))}
+                className="w-full rounded-xl mt-1.5 px-3 py-2 text-sm"
+                style={{ border:"1px solid #e5e7eb", outline:"none", resize:"vertical" }}/>
+            </div>
+            <div>
+              <Label htmlFor="h-amenities" className="text-xs font-bold uppercase tracking-wider" style={{ color:GOLD_D }}>Amenities</Label>
+              <Input id="h-amenities" placeholder="WiFi, Pool, Spa, Parking"
+                value={hotelForm.amenities}
+                onChange={e=>setHotelForm(p=>({...p,amenities:e.target.value}))} className="rounded-xl mt-1.5"/>
+            </div>
+            <div>
+              <Label htmlFor="h-images" className="text-xs font-bold uppercase tracking-wider" style={{ color:GOLD_D }}>Hotel images</Label>
+              <input id="h-image-files" type="file" accept="image/*" multiple
+                onChange={e=>addImageFiles(e.target.files)}
+                className="block w-full rounded-xl mt-1.5 px-3 py-2 text-sm"
+                style={{ border:"1px solid #e5e7eb", background:"#fff" }}/>
+              <p className="text-xs text-gray-400 mt-1">Choose photos from your computer, or paste image links below.</p>
+              <textarea id="h-images" rows={2} placeholder="Paste one image URL per line"
+                value={hotelForm.imageUrls}
+                onChange={e=>setHotelForm(p=>({...p,imageUrls:e.target.value}))}
+                className="w-full rounded-xl mt-1.5 px-3 py-2 text-sm"
+                style={{ border:"1px solid #e5e7eb", outline:"none", resize:"vertical" }}/>
+              {parseImageUrls().length > 0 && (
+                <div className="grid grid-cols-4 gap-2 mt-2">
+                  {parseImageUrls().slice(0,8).map((src, index) => (
+                    <div key={`${src.slice(0,24)}-${index}`} className="rounded-lg overflow-hidden" style={{ aspectRatio:"1/1", border:"1px solid #e5e7eb", background:"#f8fafc" }}>
+                      <img src={src} alt={`Hotel preview ${index + 1}`} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="h-room-list" className="text-xs font-bold uppercase tracking-wider" style={{ color:GOLD_D }}>Rooms</Label>
+              <p className="text-xs text-gray-400 mt-1">One room per line: name | price | capacity</p>
+              <textarea id="h-room-list" rows={2} placeholder="Deluxe Room | 1200 | 2&#10;Family Suite | 1800 | 4"
+                value={hotelForm.roomsText}
+                onChange={e=>setHotelForm(p=>({...p,roomsText:e.target.value}))}
+                className="w-full rounded-xl mt-1.5 px-3 py-2 text-sm"
+                style={{ border:"1px solid #e5e7eb", outline:"none", resize:"vertical" }}/>
+            </div>
+            {isMiniAdmin && (
+              <div className="text-xs rounded-xl px-3 py-2" style={{ background:"#fef9c3", color:"#854d0e", border:"1px solid #fde68a" }}>
+                Your hotel will stay pending until the main admin approves it.
+              </div>
+            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="pt-3" style={{ borderTop:"1px solid #EDE8DF" }}>
             <button type="button" onClick={()=>setShowHotelForm(false)} className="px-4 py-2 rounded-xl text-sm border text-gray-600 cursor-pointer">Cancel</button>
-            <button type="button" onClick={saveHotel} className="px-5 py-2 rounded-xl text-sm font-semibold text-white cursor-pointer" style={{ background:`linear-gradient(135deg,${GOLD},${GOLD_D})`, border:"none" }}>{editingHotel?"Update":"Add"}</button>
+            <button type="button" onClick={saveHotel} className="px-5 py-2 rounded-xl text-sm font-semibold text-white cursor-pointer" style={{ background:`linear-gradient(135deg,${GOLD},${GOLD_D})`, border:"none" }}>{editingHotel ? "Update" : isMiniAdmin ? "Submit" : "Add"}</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

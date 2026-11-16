@@ -10,6 +10,8 @@ export function DarkModeProvider({ children }) {
 
   useEffect(() => {
     localStorage.setItem('darkMode', JSON.stringify(isDark));
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
     if (isDark) {
       document.documentElement.classList.add('dark');
     } else {
@@ -21,7 +23,9 @@ export function DarkModeProvider({ children }) {
 
   return (
     <DarkModeContext.Provider value={{ isDark, toggleDark }}>
-      {children}
+      <div className="moroccanstay-shell" data-theme={isDark ? 'dark' : 'light'}>
+        {children}
+      </div>
     </DarkModeContext.Provider>
   );
 }

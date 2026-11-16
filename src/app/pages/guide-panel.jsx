@@ -1,20 +1,15 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { MapPin, Calendar, Users, Star, ArrowLeft, Clock, Check } from "lucide-react";
 import { Navbar } from "../components/navbar";
 import { Footer } from "../components/footer";
 import { useAuth } from "../hooks/useAuth";
+import { useAppData } from "../hooks/useAppData";
+import { toast } from "sonner";
 
 const GOLD   = "#C9A96E";
 const GOLD_D = "#8B6914";
 const NAVY   = "#1A1A2E";
-
-const guides = [
-  { id: "g1", name: "Yassine El Kbir", city: "Marrakech", language: "French, English",   rate: 120, rating: 4.9, available: true  },
-  { id: "g2", name: "Sara Benali",      city: "Fès",       language: "French, Arabic",    rate: 95,  rating: 4.8, available: true  },
-  { id: "g3", name: "Omar Azur",        city: "Chefchaouen",language: "English, Spanish", rate: 110, rating: 4.7, available: false },
-  { id: "g4", name: "Nadia Laarbi",     city: "Casablanca", language: "French, Arabic",   rate: 100, rating: 4.9, available: true  },
-];
 
 function StatCard({ icon: Icon, iconColor, iconBg, value, label }) {
   return (
@@ -35,9 +30,25 @@ function StatCard({ icon: Icon, iconColor, iconBg, value, label }) {
 }
 
 export function GuidePanel() {
-  const { role } = useAuth();
+  const { role, session, isLoggedIn } = useAuth();
+  const { guides, listAssignmentsForGuide, setGuideAvailability } = useAppData();
   const [booked, setBooked]   = useState([]);
   const [flash, setFlash]     = useState("");
+  const [assignments, setAssignments] = useState([]);
+
+  const guideProfile = useMemo(() => {
+    if (role !== "guide") return null;
+    return guides.find((g) => g.id === session?.id || g.email === session?.email) || null;
+  }, [role, guides, session?.id, session?.email]);
+
+  useEffect(() => {
+    if (role !== "guide" || !isLoggedIn) return;
+    let alive = true;
+    listAssignmentsForGuide(session?.id)
+      .then((a) => { if (alive) setAssignments(a); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [role, isLoggedIn, listAssignmentsForGuide, session?.id]);
 
   const handleBook = (guide) => {
     if (!guide.available || booked.includes(guide.id)) return;
@@ -90,6 +101,80 @@ export function GuidePanel() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-10">
+
+        {/* ── Guide mode (assignments + availability) ── */}
+        {role === "guide" && (
+          <div className="mb-10 space-y-4">
+            <div
+              className="rounded-2xl p-6 flex items-center justify-between gap-4"
+              style={{ background: "#fff", border: "1px solid #EDE8DF", boxShadow: "0 2px 16px rgba(26,26,46,0.05)" }}
+            >
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: GOLD, letterSpacing: "0.18em" }}>
+                  Guide panel
+                </p>
+                <h2 className="text-lg font-bold text-gray-900" style={{ letterSpacing: "-0.01em" }}>
+                  Welcome, {session?.name}
+                </h2>
+                <p className="text-sm" style={{ color: "#777" }}>
+                  Manage your assignments and availability.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    if (!guideProfile) return toast.error("Guide profile not found.");
+                    const updated = await setGuideAvailability(guideProfile.id, !guideProfile.available);
+                    toast.success(updated.available ? "You are now available" : "You are now unavailable");
+                  } catch (e) {
+                    toast.error(e?.message || "Failed to update availability");
+                  }
+                }}
+                className="px-5 py-2 rounded-xl text-sm font-semibold transition-all"
+                style={
+                  guideProfile?.available
+                    ? { background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", cursor: "pointer" }
+                    : { background: "#f3f4f6", color: "#6b7280", border: "1px solid #e5e7eb", cursor: "pointer" }
+                }
+              >
+                {guideProfile?.available ? "Available" : "Unavailable"}
+              </button>
+            </div>
+
+            <div
+              className="rounded-2xl p-6"
+              style={{ background: "#fff", border: "1px solid #EDE8DF", boxShadow: "0 2px 16px rgba(26,26,46,0.05)" }}
+            >
+              <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: GOLD, letterSpacing: "0.18em" }}>
+                Your assignments
+              </p>
+              {assignments.length === 0 ? (
+                <p className="text-sm" style={{ color: "#999" }}>No assignments yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {assignments.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between gap-4 rounded-xl px-5 py-4"
+                      style={{ background: "rgba(201,169,110,0.06)", border: `1px solid rgba(201,169,110,0.2)` }}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm">{a.hotelName}</p>
+                        <p className="text-xs" style={{ color: "#999" }}>
+                          {a.checkIn} → {a.checkOut} · {a.status}
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: "#fef9c3", color: "#854d0e" }}>
+                        {a.status === "requested" ? "Requested" : a.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Stats ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">

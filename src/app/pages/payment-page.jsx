@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router";
 import { CreditCard, Lock, Check, ChevronLeft, MapPin, Star, Shield } from "lucide-react";
 import { Navbar } from "../components/navbar";
 import { Input } from "../components/ui/input";
-import { hotels } from "../data/hotels";
 import { formatMad } from "../lib/currency";
+import { useAppData } from "../hooks/useAppData";
+import { useAuth } from "../hooks/useAuth";
+import { toast } from "sonner";
 
 const GOLD   = "#C9A96E";
 const GOLD_D = "#8B6914";
@@ -33,11 +35,28 @@ function GoldInput({ icon: Icon, ...props }) {
 export function PaymentPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { hotels, createBooking, createPayment, createAssignment } = useAppData();
+  const { session, isLoggedIn } = useAuth();
   const hotel = hotels.find((h) => h.id === id);
 
   const [form, setForm] = useState({ cardNumber: "", cardName: "", expiryDate: "", cvv: "" });
   const [processing, setProcessing] = useState(false);
   const [complete, setComplete]     = useState(false);
+
+  const draft = useMemo(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem("ms_booking_draft") || "null");
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      toast.error("Please sign in to pay.");
+      navigate(`/reservation/${id}`, { replace: true });
+    }
+  }, [isLoggedIn, id, navigate]);
 
   if (!hotel) {
     return (
@@ -52,12 +71,12 @@ export function PaymentPage() {
     );
   }
 
-  const selectedRoom = hotel.rooms[0];
-  const nights    = 4;
-  const subtotal  = selectedRoom.price * nights;
-  const service   = Math.round(subtotal * 0.1);
-  const taxes     = Math.round(subtotal * 0.12);
-  const total     = subtotal + service + taxes;
+  const selectedRoom = hotel.rooms.find((r) => r.id === draft?.roomId) || hotel.rooms[0];
+  const nights = draft?.nights || 1;
+  const subtotal = draft?.subtotal ?? selectedRoom.price * nights;
+  const service = draft?.serviceFee ?? Math.round(subtotal * 0.1);
+  const taxes = Math.round(subtotal * 0.12);
+  const total = (draft?.total ?? (subtotal + service)) + taxes;
 
   const handleCardNumber = (e) => {
     const v = e.target.value.replace(/\D/g, "").slice(0, 16);
@@ -71,11 +90,52 @@ export function PaymentPage() {
   const handleSubmit = (e) => {
     e.preventDefault();
     setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
-      setComplete(true);
-      setTimeout(() => navigate("/home", { viewTransition: true }), 3000);
-    }, 2000);
+    (async () => {
+      try {
+        const booking = await createBooking({
+          userId: session?.id,
+          guest: draft?.fullName || session?.name || "Guest",
+          email: draft?.email || session?.email || "",
+          phone: draft?.phone || "",
+          hotelId: hotel.id,
+          hotel: hotel.name,
+          roomId: selectedRoom.id,
+          room: selectedRoom.name,
+          checkIn: draft?.checkIn || new Date().toISOString().slice(0, 10),
+          checkOut: draft?.checkOut || new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+          nights,
+          amount: total,
+          guideId: draft?.guide?.id || null,
+          guideName: draft?.guide?.name || null,
+        });
+        await createPayment({
+          bookingId: booking.id,
+          amount: total,
+          method: "card",
+          meta: { last4: String(form.cardNumber || "").replace(/\s/g, "").slice(-4) },
+        });
+        if (draft?.guide?.id) {
+          await createAssignment({
+            guideId: draft.guide.id,
+            guideName: draft.guide.name,
+            bookingId: booking.id,
+            hotelId: hotel.id,
+            hotelName: hotel.name,
+            checkIn: booking.checkIn,
+            checkOut: booking.checkOut,
+            status: "requested",
+          });
+        }
+        sessionStorage.removeItem("ms_booking_draft");
+        setComplete(true);
+        toast.success("Payment successful!");
+        setTimeout(() => navigate("/home", { viewTransition: true }), 3000);
+      } catch (err) {
+        toast.error(err?.message || "Payment failed");
+      } finally {
+        setProcessing(false);
+      }
+    })();
   };
 
   /* ── Success screen ── */

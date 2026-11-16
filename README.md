@@ -26,3 +26,36 @@ The user interface draws inspiration from premium travel systems, offering a loc
 *Original design concept adapted from Figma.*
 
 for live demo : https://moroccanstay.ayman-bhg1.workers.dev/
+
+## Laravel Backend
+
+The project includes a Laravel API in `backend/` for the MoroccanStay use case:
+
+- Customers can browse/search hotels, view details, reserve rooms, pay, and submit reviews.
+- Mini admins can submit hotel information and room availability requests.
+- Platform admins can manage hotels, rooms, reservations, guides, reviews, requests, and statistics.
+
+Run the API:
+
+```bash
+cd backend
+composer install
+copy .env.example .env
+php artisan key:generate
+php artisan migrate --seed
+php artisan serve
+```
+
+Then run the frontend from the project root:
+
+```bash
+npm run dev
+```
+
+By default the frontend calls `http://127.0.0.1:8000/api` and falls back to browser localStorage if the Laravel server is not running.
+
+Demo accounts:
+
+- Admin: `admin@moroccanstay.com` / `admin123`
+- Customer: `client@moroccanstay.com` / `client123`
+- Guide: `hassan.guide@moroccanstay.com` / `guide123`

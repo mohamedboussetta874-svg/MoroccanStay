@@ -1,11 +1,9 @@
 import { RouterProvider } from "react-router";
 import { router } from "./routes";
-import { AuthProvider } from "./context/AuthContext";
-import { DarkModeProvider } from "./context/DarkModeContext";
+import { Notifications } from "./components/Notifications";
 export default function App() {
-    return (<AuthProvider>
-      <DarkModeProvider>
-        <RouterProvider router={router}/>
-      </DarkModeProvider>
-    </AuthProvider>);
+    return (<>
+      <RouterProvider router={router}/>
+      <Notifications />
+    </>);
 }
